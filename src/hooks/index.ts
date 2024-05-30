@@ -46,10 +46,10 @@ type Listener<Value> = (action: {n: Version; p?: Promise<Value>; v?: Value}) => 
 
 type ContextValue<Value> = {
 	[CONTEXT_VALUE]: {
-		/** value */ v: MutableRefObject<Value>;
-		/** version */ n: MutableRefObject<Version>;
+		/** value    */ v: MutableRefObject<Value>;
+		/** version  */ n: MutableRefObject<Version>;
 		/** listener */ l: Set<Listener<Value>>;
-		/** update */ u: (fn: () => void, options?: {suspense: boolean}) => void;
+		/** update   */ u: (fn: () => void, options?: {suspense: boolean}) => void;
 	};
 };
 
@@ -179,13 +179,15 @@ const useContextSelector = <Value, Selected>(
 					if (Object.is(prev[0], action.v)) {
 						return prev;
 					}
-					const nextSelected = selector(action.v);
+					if (action.v) {
+						const nextSelected = selector(action.v);
 
-					if (Object.is(prev[1], nextSelected)) {
-						return prev;
+						if (Object.is(prev[1], nextSelected)) {
+							return prev;
+						}
+
+						return [action.v, nextSelected] as const;
 					}
-
-					return [action.v, nextSelected] as const;
 				}
 			} catch (error) {
 				// ignored
@@ -194,4 +196,72 @@ const useContextSelector = <Value, Selected>(
 		},
 		[value, selected] as const,
 	);
+
+	if (!Object.is(state[1], selected)) {
+		dispatch();
+	}
+
+	useIsomorphicLayoutEffect(() => {
+		listeners.add(dispatch);
+		return () => {
+			listeners.delete(dispatch);
+		};
+	}, [listeners]);
+
+	return state[1];
+};
+
+export const useContext = <Value>(context: Context<Value>) => {
+	return useContextSelector(context, identity);
+};
+
+export const useContextUpdate = <Value>(context: Context<Value>) => {
+	const contextValue = useContextReactJS(
+		context as unknown as ContextReactJS<ContextValue<Value>>,
+	)[CONTEXT_VALUE];
+
+	if (typeof process === "object" && process.env.NODE_ENV !== "production") {
+		if (!contextValue) {
+			throw new Error("useContextUpdate requires special context");
+		}
+	}
+
+	const {u: update} = contextValue;
+	return update;
+};
+
+export const BridgeProvider = ({
+	context,
+	value,
+	children,
+}: {
+	context: Context<any>;
+	value: unknown;
+	children: ReactNode;
+}) => {
+	const {[ORIGINAL_PROVIDER]: ProviderOrig} = context as unknown as {
+		[ORIGINAL_PROVIDER]: Provider<unknown>;
+	};
+
+	if (typeof process === "object" && process.env.NODE_ENV !== "production") {
+		if (!ProviderOrig) {
+			throw new Error("BridgeProvider requires special context");
+		}
+	}
+
+	return createElement(ProviderOrig, {value}, children);
+};
+
+export const useBridgeValue = (context: ContextValue<any>) => {
+	const bridgeValue = useContextReactJS(
+		context as unknown as ContextReactJS<ContextValue<unknown>>,
+	);
+
+	if (typeof process === "object" && process.env.NODE_ENV !== "production") {
+		if (!bridgeValue[CONTEXT_VALUE]) {
+			throw new Error("useBridgeValue requires special context");
+		}
+	}
+
+	return bridgeValue as any;
 };
