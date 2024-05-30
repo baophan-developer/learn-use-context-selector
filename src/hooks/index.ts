@@ -135,7 +135,7 @@ export function createContext<Value>(defaultValue: Value) {
 	return context as unknown as Context<Value>;
 }
 
-const useContextSelector = <Value, Selected>(
+export const useContextSelector = <Value, Selected>(
 	context: Context<Value>,
 	selector: (value: Value) => Selected,
 ) => {
